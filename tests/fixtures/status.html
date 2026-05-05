@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <body
+    data-iddero-device-name="Ground Floor Panel"
+    data-iddero-model="HC3-KNX"
+    data-iddero-firmware="5.0"
+  >
+    <div
+      data-iddero-id="living_temperature"
+      data-iddero-kind="sensor"
+      data-iddero-name="Living room temperature"
+      data-iddero-state="21.4"
+      data-iddero-unit="C"
+      data-iddero-device-class="temperature"
+      data-iddero-state-class="measurement"
+    ></div>
+
+    <button
+      data-iddero-id="living_light"
+      data-iddero-kind="switch"
+      data-iddero-name="Living room light"
+      data-iddero-state="on"
+      data-iddero-control-path="/widgets/set"
+      data-iddero-control-method="POST"
+      data-iddero-control-id-param="widget"
+      data-iddero-control-value-param="state"
+      data-iddero-control-on-value="1"
+      data-iddero-control-off-value="0"
+    ></button>
+  </body>
+</html>

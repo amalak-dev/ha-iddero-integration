@@ -1,0 +1,14 @@
+{
+  "domain": "iddero",
+  "name": "Iddero",
+  "codeowners": ["@amalak-dev"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/amalak-dev/ha-iddero-integration",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/amalak-dev/ha-iddero-integration/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
+

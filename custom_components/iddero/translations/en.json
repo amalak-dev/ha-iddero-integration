@@ -1,0 +1,53 @@
+{
+  "title": "Iddero",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Iddero",
+        "description": "Connect to the Iddero web interface on your local network.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "use_ssl": "Use HTTPS",
+          "verify_ssl": "Verify TLS certificate",
+          "base_path": "Base path",
+          "auto_discover": "Auto-discover devices",
+          "create_areas": "Create areas from zones",
+          "devices_file": "Device map JSON file",
+          "username": "Username",
+          "password": "Password",
+          "poll_interval": "Poll interval in seconds"
+        },
+        "data_description": {
+          "host": "IP address or hostname of the Iddero panel.",
+          "base_path": "Path where the web UI starts, normally /.",
+          "auto_discover": "Scan Iddero zone pages when no device map exists.",
+          "create_areas": "Automatically create Home Assistant areas matching Iddero zone names.",
+          "devices_file": "Optional path to a JSON device map. Relative paths are resolved from the Home Assistant config directory.",
+          "poll_interval": "How often Home Assistant should poll the page."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the Iddero panel.",
+      "invalid_auth": "The Iddero panel rejected the credentials.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This Iddero panel is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Iddero options",
+        "data": {
+          "auto_discover": "Auto-discover devices",
+          "create_areas": "Create areas from zones",
+          "devices_file": "Device map JSON file",
+          "poll_interval": "Poll interval in seconds"
+        }
+      }
+    }
+  }
+}
