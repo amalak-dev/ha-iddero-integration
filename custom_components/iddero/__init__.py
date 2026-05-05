@@ -25,7 +25,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_VERIFY_SSL,
         DATA_CLIENT,
         DATA_COORDINATOR,
-        DATA_SESSION,
         DEFAULT_AUTO_DISCOVER,
         DEFAULT_BASE_PATH,
         DEFAULT_POLL_INTERVAL,
@@ -107,7 +106,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_CLIENT: client,
         DATA_COORDINATOR: coordinator,
-        DATA_SESSION: session,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -117,12 +115,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload an Iddero config entry."""
-    from .const import DATA_SESSION, DOMAIN, PLATFORMS
+    from .const import DOMAIN, PLATFORMS
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        runtime = hass.data[DOMAIN].pop(entry.entry_id)
-        await runtime[DATA_SESSION].close()
+        hass.data[DOMAIN].pop(entry.entry_id)
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
 

@@ -95,10 +95,7 @@ class IdderoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             password=user_input.get(CONF_PASSWORD),
             session=session,
         )
-        try:
-            await client.async_probe()
-        finally:
-            await session.close()
+        await client.async_probe()
 
 
 class IdderoOptionsFlow(config_entries.OptionsFlow):

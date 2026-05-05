@@ -21,7 +21,6 @@ DEFAULT_PORT = 80
 
 DATA_CLIENT = "client"
 DATA_COORDINATOR = "coordinator"
-DATA_SESSION = "session"
 
 PLATFORMS = [Platform.COVER, Platform.LIGHT, Platform.SENSOR, Platform.SWITCH]
 
