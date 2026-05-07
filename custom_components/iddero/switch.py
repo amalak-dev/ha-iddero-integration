@@ -35,16 +35,18 @@ class IdderoSwitchEntity(IdderoEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return switch state."""
+        if isinstance(self._optimistic_state, bool):
+            return self._optimistic_state
         state = self.point.state
         return state if isinstance(state, bool) else None
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
         await self.coordinator.client.async_set_switch(self.point, True)
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(True)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
         await self.coordinator.client.async_set_switch(self.point, False)
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(False)
 

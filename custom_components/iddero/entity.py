@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -25,6 +26,17 @@ class IdderoEntity(CoordinatorEntity[IdderoDataUpdateCoordinator]):
         super().__init__(coordinator, context=point_key)
         self._point_key = point_key
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{point_key}"
+        self._optimistic_state: Any = None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        # Real data has arrived; trust it over the optimistic guess.
+        self._optimistic_state = None
+        super()._handle_coordinator_update()
+
+    def _set_optimistic(self, state: Any) -> None:
+        self._optimistic_state = state
+        self.async_write_ha_state()
 
     @property
     def point(self) -> IdderoPoint:

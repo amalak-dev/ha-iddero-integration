@@ -47,10 +47,15 @@ class IdderoCoverEntity(IdderoEntity, CoverEntity):
         | CoverEntityFeature.SET_POSITION
     )
 
+    def _effective_raw_position(self) -> int | None:
+        if isinstance(self._optimistic_state, int):
+            return self._optimistic_state
+        return _raw_position(self.point.state)
+
     @property
     def current_cover_position(self) -> int | None:
         """Return Home Assistant cover position."""
-        raw_position = _raw_position(self.point.state)
+        raw_position = self._effective_raw_position()
         if raw_position is None:
             return None
         return 100 - raw_position
@@ -58,7 +63,7 @@ class IdderoCoverEntity(IdderoEntity, CoverEntity):
     @property
     def is_closed(self) -> bool | None:
         """Return whether the blind is closed."""
-        raw_position = _raw_position(self.point.state)
+        raw_position = self._effective_raw_position()
         if raw_position is None:
             return None
         return raw_position >= 100
@@ -66,17 +71,17 @@ class IdderoCoverEntity(IdderoEntity, CoverEntity):
     async def async_open_cover(self, **kwargs) -> None:
         """Open the blind."""
         await self.coordinator.client.async_open_cover(self.point)
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(0)
 
     async def async_close_cover(self, **kwargs) -> None:
         """Close the blind."""
         await self.coordinator.client.async_close_cover(self.point)
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(100)
 
     async def async_stop_cover(self, **kwargs) -> None:
         """Stop the blind."""
         await self.coordinator.client.async_stop_cover(self.point)
-        await self.coordinator.async_request_refresh()
+        # Position after stop is unknown; let the next poll resolve it.
 
     async def async_set_cover_position(self, **kwargs) -> None:
         """Set blind position."""
@@ -86,7 +91,7 @@ class IdderoCoverEntity(IdderoEntity, CoverEntity):
             self.point,
             iddero_position,
         )
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(iddero_position)
 
 
 def _raw_position(state: bool | int | float | str | None) -> int | None:
