@@ -77,6 +77,8 @@ class IdderoWebClient:
         self._ssl: bool | None = None if verify_ssl else False
         self._authenticated = False
         self._token: str | None = None
+        self._login_lock = asyncio.Lock()
+        self._command_lock = asyncio.Lock()
 
     async def async_probe(self) -> None:
         """Verify that the panel is reachable and credentials work."""
@@ -85,6 +87,18 @@ class IdderoWebClient:
 
     async def async_login(self) -> None:
         """Log in to the Iddero panel."""
+        async with self._login_lock:
+            await self._async_login_locked()
+
+    async def _async_relogin(self, stale_token: str | None) -> None:
+        """Log in again unless another request already replaced the token."""
+        async with self._login_lock:
+            if self._authenticated and self._token != stale_token:
+                return
+            self._authenticated = False
+            await self._async_login_locked()
+
+    async def _async_login_locked(self) -> None:
         if self._authenticated:
             return
 
@@ -240,18 +254,31 @@ class IdderoWebClient:
         return html
 
     async def async_set_light(self, point: IdderoPoint, is_on: bool) -> None:
-        """Set a light by using Iddero's toggle command when needed."""
-        current_state = point.state if isinstance(point.state, bool) else None
-        if current_state is is_on:
-            return
+        """Set a light through Iddero's toggle-only command.
 
+        The panel only offers a toggle, so the decision is made from the state
+        the panel reports right now, never from cached Home Assistant state.
+        Commands are serialized so two quick requests cannot both toggle.
+        """
         device = _device_from_point(point)
-        await self._request_text(
-            "GET",
-            self._zone_path(device=device, action=True, light_click=True),
-        )
-        await asyncio.sleep(COMMAND_SETTLE_DELAY)
-        self._authenticated = True
+        async with self._command_lock:
+            html = await self.async_get_zone_page(
+                zone_code=device.zone_code,
+                section_code=device.section_code,
+            )
+            current_state = parse_zone_statuses(html).get(device.device_code)
+            if not isinstance(current_state, bool):
+                raise IdderoCommandError(
+                    f"Cannot read the current state of light {point.key!r}"
+                )
+            if current_state is is_on:
+                return
+
+            await self._request_text(
+                "GET",
+                self._zone_path(device=device, action=True, light_click=True),
+            )
+            await asyncio.sleep(COMMAND_SETTLE_DELAY)
 
     async def async_set_cover_position(
         self,
@@ -260,13 +287,13 @@ class IdderoWebClient:
     ) -> None:
         """Set a blind position from 0 to 100."""
         device = _device_from_point(point)
-        await self._request_text(
-            "POST",
-            self._zone_path(device=device, action=True),
-            data={"value": str(position), "command:set": "true"},
-        )
-        await asyncio.sleep(COMMAND_SETTLE_DELAY)
-        self._authenticated = True
+        async with self._command_lock:
+            await self._request_text(
+                "POST",
+                self._zone_path(device=device, action=True),
+                data={"value": str(position), "command:set": "true"},
+            )
+            await asyncio.sleep(COMMAND_SETTLE_DELAY)
 
     async def async_open_cover(self, point: IdderoPoint) -> None:
         """Move a blind up."""
@@ -302,19 +329,19 @@ class IdderoWebClient:
             id_param: point.key,
             value_param: on_value if is_on else off_value,
         }
-        await self._request_text(method, control_path, data=data)
-        await asyncio.sleep(COMMAND_SETTLE_DELAY)
-        self._authenticated = True
+        async with self._command_lock:
+            await self._request_text(method, control_path, data=data)
+            await asyncio.sleep(COMMAND_SETTLE_DELAY)
 
     async def _async_move_cover(self, point: IdderoPoint, command: str) -> None:
         device = _device_from_point(point)
-        await self._request_text(
-            "POST",
-            f"{self._zone_path(device=device, action=True)}&{command}",
-            data={},
-        )
-        await asyncio.sleep(COMMAND_SETTLE_DELAY)
-        self._authenticated = True
+        async with self._command_lock:
+            await self._request_text(
+                "POST",
+                f"{self._zone_path(device=device, action=True)}&{command}",
+                data={},
+            )
+            await asyncio.sleep(COMMAND_SETTLE_DELAY)
 
     async def _request_text(
         self,
@@ -323,6 +350,7 @@ class IdderoWebClient:
         retry_auth: bool = True,
         **kwargs: Any,
     ) -> tuple[str, ClientResponse]:
+        token_used = self._token
         url = self._url_for(path_or_url)
         try:
             response = await self._session.request(
@@ -341,33 +369,52 @@ class IdderoWebClient:
                     raise IdderoCannotConnectError(
                         f"Panel returned HTTP {response.status}"
                     )
-                if retry_auth and self._needs_login(response):
-                    self._authenticated = False
-                    await self.async_login()
-                    return await self._request_text(
-                        method,
-                        path_or_url,
-                        retry_auth=False,
-                        **kwargs,
-                    )
-                return await response.text(), response
+                html = await response.text()
         except IdderoError:
             raise
         except (TimeoutError, ClientError) as err:
             raise IdderoCannotConnectError(str(err)) from err
+
+        if retry_auth and self._needs_login(response, html):
+            await self._async_relogin(token_used)
+            # The path is resolved again so the retry carries the new token.
+            return await self._request_text(
+                method,
+                path_or_url,
+                retry_auth=False,
+                **kwargs,
+            )
+        return html, response
 
     def _url_for(self, path_or_url: str) -> str:
         if not path_or_url:
             return str(self._base_url)
         if "://" in path_or_url:
             return path_or_url
-        return urljoin(str(self._base_url), path_or_url)
+        return urljoin(str(self._base_url), self._with_token(path_or_url))
 
-    def _needs_login(self, response: ClientResponse) -> bool:
+    def _with_token(self, path: str) -> str:
+        """Add the session token to panel page paths such as `zone?...`."""
+        page, separator, query = path.partition("?")
+        if not self._token or not separator or "login" in page.lower():
+            return path
+        if any(part.startswith("id=") for part in query.split("&")):
+            return path
+        if not query:
+            return f"{page}?id={self._token}"
+        return f"{page}?id={self._token}&{query}"
+
+    def _needs_login(self, response: ClientResponse, html: str) -> bool:
+        """Detect an expired session.
+
+        An expired token does not always redirect to a login URL: the panel can
+        answer the original URL with the login page, so the HTML is checked too.
+        """
         if not self._username and not self._password:
             return False
-        path = response.url.path.lower()
-        return "login" in path or self._token is None
+        if "login" in response.url.path.lower() or self._token is None:
+            return True
+        return parse_login_form(html, str(response.url)) is not None
 
     def _zone_path(
         self,
@@ -384,10 +431,7 @@ class IdderoWebClient:
         if zone_code is None or section_code is None:
             raise IdderoCommandError("Zone code and section code are required")
 
-        query_parts = ["zone?"]
-        if self._token:
-            query_parts.append(f"id={self._token}")
-        query_parts.append(f"&map=1&zone={zone_code}&section={section_code}")
+        query_parts = [f"zone?map=1&zone={zone_code}&section={section_code}"]
         if action:
             if device is None:
                 raise IdderoCommandError("Device is required for control actions")
@@ -397,11 +441,7 @@ class IdderoWebClient:
         return "".join(query_parts)
 
     def _zones_path(self) -> str:
-        query_parts = ["zones?"]
-        if self._token:
-            query_parts.append(f"id={self._token}&")
-        query_parts.append("map=1")
-        return "".join(query_parts)
+        return "zones?map=1"
 
 
 def _build_base_url(host: str, port: int, use_ssl: bool, base_path: str) -> URL:

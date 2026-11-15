@@ -46,10 +46,10 @@ class IdderoLightEntity(IdderoEntity, LightEntity):
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the light on."""
         await self.coordinator.client.async_set_light(self.point, True)
-        self._set_optimistic(True)
+        await self._async_after_command(True)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the light off."""
         await self.coordinator.client.async_set_light(self.point, False)
-        self._set_optimistic(False)
+        await self._async_after_command(False)
 
