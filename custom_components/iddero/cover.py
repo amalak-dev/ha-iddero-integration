@@ -71,17 +71,18 @@ class IdderoCoverEntity(IdderoEntity, CoverEntity):
     async def async_open_cover(self, **kwargs) -> None:
         """Open the blind."""
         await self.coordinator.client.async_open_cover(self.point)
-        self._set_optimistic(0)
+        await self._async_after_command(0)
 
     async def async_close_cover(self, **kwargs) -> None:
         """Close the blind."""
         await self.coordinator.client.async_close_cover(self.point)
-        self._set_optimistic(100)
+        await self._async_after_command(100)
 
     async def async_stop_cover(self, **kwargs) -> None:
         """Stop the blind."""
         await self.coordinator.client.async_stop_cover(self.point)
-        # Position after stop is unknown; let the next poll resolve it.
+        # Position after stop is unknown; only the fresh poll can tell.
+        await self._async_after_command()
 
     async def async_set_cover_position(self, **kwargs) -> None:
         """Set blind position."""
@@ -91,7 +92,7 @@ class IdderoCoverEntity(IdderoEntity, CoverEntity):
             self.point,
             iddero_position,
         )
-        self._set_optimistic(iddero_position)
+        await self._async_after_command(iddero_position)
 
 
 def _raw_position(state: bool | int | float | str | None) -> int | None:

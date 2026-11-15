@@ -43,10 +43,10 @@ class IdderoSwitchEntity(IdderoEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
         await self.coordinator.client.async_set_switch(self.point, True)
-        self._set_optimistic(True)
+        await self._async_after_command(True)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
         await self.coordinator.client.async_set_switch(self.point, False)
-        self._set_optimistic(False)
+        await self._async_after_command(False)
 

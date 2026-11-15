@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from homeassistant.core import callback
@@ -27,16 +28,23 @@ class IdderoEntity(CoordinatorEntity[IdderoDataUpdateCoordinator]):
         self._point_key = point_key
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{point_key}"
         self._optimistic_state: Any = None
+        self._optimistic_since = 0.0
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        # Real data has arrived; trust it over the optimistic guess.
-        self._optimistic_state = None
+        # Only data fetched after the command can replace the optimistic guess;
+        # a poll that was already in flight still carries the old state.
+        if self.coordinator.last_fetch_started >= self._optimistic_since:
+            self._optimistic_state = None
         super()._handle_coordinator_update()
 
-    def _set_optimistic(self, state: Any) -> None:
-        self._optimistic_state = state
-        self.async_write_ha_state()
+    async def _async_after_command(self, optimistic_state: Any = None) -> None:
+        """Show the expected state now and confirm it with a fresh poll."""
+        if optimistic_state is not None:
+            self._optimistic_state = optimistic_state
+            self._optimistic_since = time.monotonic()
+            self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
     @property
     def point(self) -> IdderoPoint:

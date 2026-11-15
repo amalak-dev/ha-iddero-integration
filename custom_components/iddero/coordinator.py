@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -34,9 +35,10 @@ class IdderoDataUpdateCoordinator(DataUpdateCoordinator[IdderoSnapshot]):
             name="Iddero",
             config_entry=config_entry,
             update_interval=timedelta(seconds=poll_interval),
-            always_update=False,
         )
         self.client = client
+        # Monotonic time at which the data now in `self.data` started loading.
+        self.last_fetch_started = 0.0
         self.devices = devices
         self.devices_by_key: dict[str, IdderoDeviceDescription] = {
             d.key: d for d in devices
@@ -44,6 +46,7 @@ class IdderoDataUpdateCoordinator(DataUpdateCoordinator[IdderoSnapshot]):
 
     async def _async_update_data(self) -> IdderoSnapshot:
         """Fetch data from the Iddero panel."""
+        self.last_fetch_started = time.monotonic()
         try:
             if self.devices:
                 return await self.client.async_fetch_mapped_snapshot(self.devices)
