@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
@@ -28,6 +31,8 @@ from .const import (
     DOMAIN,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class IdderoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle an Iddero config flow."""
@@ -46,15 +51,8 @@ class IdderoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
-            try:
-                await self._async_validate_input(user_input)
-            except IdderoInvalidAuthError:
-                errors["base"] = "invalid_auth"
-            except IdderoCannotConnectError:
-                errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                errors["base"] = "unknown"
-            else:
+            errors = await self._async_validation_errors(user_input)
+            if not errors:
                 options = {
                     CONF_AUTO_DISCOVER: user_input.pop(CONF_AUTO_DISCOVER),
                     CONF_CREATE_AREAS: user_input.pop(CONF_CREATE_AREAS),
@@ -73,6 +71,37 @@ class IdderoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Start re-authentication after the panel rejected the credentials."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Ask for new credentials and check them against the panel."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            errors = await self._async_validation_errors({**entry.data, **user_input})
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry, data_updates=user_input
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=self.add_suggested_values_to_schema(
+                _REAUTH_SCHEMA,
+                {CONF_USERNAME: (user_input or entry.data).get(CONF_USERNAME)},
+            ),
+            description_placeholders={"host": entry.data[CONF_HOST]},
+            errors=errors,
+        )
+
     @staticmethod
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
@@ -80,7 +109,21 @@ class IdderoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
         return IdderoOptionsFlow(config_entry)
 
-    async def _async_validate_input(self, user_input: dict[str, Any]) -> None:
+    async def _async_validation_errors(
+        self, user_input: Mapping[str, Any]
+    ) -> dict[str, str]:
+        try:
+            await self._async_validate_input(user_input)
+        except IdderoInvalidAuthError:
+            return {"base": "invalid_auth"}
+        except IdderoCannotConnectError:
+            return {"base": "cannot_connect"}
+        except Exception:
+            _LOGGER.exception("Unexpected error while validating the Iddero panel")
+            return {"base": "unknown"}
+        return {}
+
+    async def _async_validate_input(self, user_input: Mapping[str, Any]) -> None:
         session = async_create_clientsession(
             self.hass,
             verify_ssl=user_input.get(CONF_VERIFY_SSL, True),
@@ -151,6 +194,18 @@ class IdderoOptionsFlow(config_entries.OptionsFlow):
         )
 
 
+_PASSWORD_SELECTOR = selector.TextSelector(
+    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+)
+
+_REAUTH_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): _PASSWORD_SELECTOR,
+    }
+)
+
+
 def _user_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
     defaults = user_input or {}
     return vol.Schema(
@@ -191,9 +246,7 @@ def _user_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
             vol.Optional(
                 CONF_PASSWORD,
                 default=defaults.get(CONF_PASSWORD, ""),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
+            ): _PASSWORD_SELECTOR,
             vol.Required(
                 CONF_POLL_INTERVAL,
                 default=defaults.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
