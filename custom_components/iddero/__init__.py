@@ -12,9 +12,10 @@ if TYPE_CHECKING:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Iddero from a config entry."""
+    from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
     from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-    from .client import IdderoWebClient
+    from .client import IdderoError, IdderoInvalidAuthError, IdderoWebClient
     from .const import (
         CONF_AUTO_DISCOVER,
         CONF_BASE_PATH,
@@ -71,7 +72,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_AUTO_DISCOVER,
         data.get(CONF_AUTO_DISCOVER, DEFAULT_AUTO_DISCOVER),
     ):
-        devices = await client.async_discover_devices()
+        try:
+            devices = await client.async_discover_devices()
+        except IdderoInvalidAuthError as err:
+            raise ConfigEntryAuthFailed from err
+        except IdderoError as err:
+            raise ConfigEntryNotReady(str(err)) from err
         if devices:
             hass.config_entries.async_update_entry(
                 entry,

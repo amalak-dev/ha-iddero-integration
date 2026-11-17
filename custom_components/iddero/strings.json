@@ -26,6 +26,14 @@
           "devices_file": "Optional path to a JSON device map. Relative paths are resolved from the Home Assistant config directory.",
           "poll_interval": "How often Home Assistant should poll the page."
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with Iddero",
+        "description": "The Iddero panel at {host} rejected the stored credentials. Enter the current username and password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -34,7 +42,8 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This Iddero panel is already configured."
+      "already_configured": "This Iddero panel is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "options": {
